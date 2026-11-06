@@ -18,7 +18,8 @@ from .config import Config
 from .db import Database
 from .identity import IdentityCore, IdentityError
 from .llm_gateway import LLMError, build_gateway
-from .scheduler import run_maintenance
+from .remote import RemoteSync
+from .scheduler import run_maintenance, tick
 from .ui import ADMIN_HTML, INDEX_HTML
 
 PRIVACY = ("Com seu consentimento, guardamos: um identificador aleatório de sessão (só o hash), o nome que você "
@@ -38,6 +39,8 @@ def create_app(cfg: Config | None = None, gateway=None) -> Flask:
         cfg.backup_dir = str(Path(cfg.db_path).parent / "backups")
     emotions.TZ_OFFSET = cfg.tz_offset_hours
     memory.set_embedder(embeddings.build_embedder(cfg))
+    remote = RemoteSync(cfg, cfg.db_path)
+    remote.restore_if_missing()  # plano gratuito: traz o banco do armazenamento externo ANTES de abri-lo
     db = Database(cfg.db_path)
     identity = IdentityCore(db, cfg.constitution_path)
     with db.conn() as c:
@@ -45,11 +48,16 @@ def create_app(cfg: Config | None = None, gateway=None) -> Flask:
     gateway = gateway or build_gateway(cfg)
     budget = Budget(db, cfg.daily_token_budget, cfg.rpm_limit)
     svc = AliceService(db, identity, gateway, budget, cfg)
+    svc.remote = remote
+    if remote.restored == "restored":
+        with db.conn() as c:
+            audit.log(c, "system", "remote_restored", {}, level="warning")
 
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = MAX_RESTORE
     app.json.ensure_ascii = False
     app.extensions["alice"] = svc
+    app.extensions["remote"] = remote
     # Sessão do painel: cookie assinado, HttpOnly, SameSite=Strict, 8 h. A chave vem do ambiente
     # (ou é derivada do segredo do admin); nunca é gravada no código.
     app.secret_key = cfg.secret_key or hashlib.sha256(
@@ -506,6 +514,21 @@ def create_app(cfg: Config | None = None, gateway=None) -> Flask:
         with db.conn() as c:
             audit.log(c, "admin", "backup_restored", {"safety_backup": safety.name}, level="warning")
         return jsonify(ok=True, safety_backup=safety.name)
+
+    @app.post("/api/admin/tick")
+    @admin_only
+    def admin_tick():  # para cron externo (também acorda o serviço no plano gratuito)
+        return jsonify(ran=tick(svc, cfg))
+
+    @app.get("/api/admin/remote")
+    @admin_only
+    def remote_status():
+        return jsonify(remote.status())
+
+    @app.post("/api/admin/remote/sync")
+    @admin_only
+    def remote_sync():
+        return jsonify(remote.sync(force=True))
 
     @app.post("/api/admin/maintenance")
     @admin_only

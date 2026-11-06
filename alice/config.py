@@ -22,6 +22,16 @@ def _b(v: str | None) -> bool:
     return str(v or "").strip().lower() in ("1", "on", "true", "yes", "sim")
 
 
+_EMPTY = {"", "-", "--", "none", "nenhum", "nenhuma", "off", "n/a", "na", "no", "nao", "não"}
+
+
+def _clean(v: str | None) -> str:
+    """Valores de 'enfeite' ('-', 'nenhum', espaços) contam como vazio; assim dá para pular as variáveis opcionais
+    mesmo que o painel do Render exija preencher algo."""
+    v = (v or "").strip()
+    return "" if v.lower() in _EMPTY else v
+
+
 @dataclass
 class Config:
     db_path: str = ""
@@ -46,6 +56,15 @@ class Config:
     embed_url: str = ""               # opcional: provedor de embeddings OpenAI-compatível
     embed_key: str = field(default="", repr=False)
     embed_model: str = "text-embedding-3-small"
+    # Armazenamento externo compatível com S3 (plano gratuito do Render, sem disco)
+    s3_endpoint: str = ""
+    s3_bucket: str = ""
+    s3_region: str = "us-east-1"
+    s3_access_key: str = field(default="", repr=False)
+    s3_secret_key: str = field(default="", repr=False)
+    s3_prefix: str = "alice"
+    backup_passphrase: str = field(default="", repr=False)  # criptografa o backup antes de enviar
+    remote_sync_min: int = 5
     retention_days: int = 90          # visitantes inativos são apagados (Art. 30)
     # Autonomia (Fase 3) — tudo limitado e auditado
     scheduler: bool = False
@@ -54,6 +73,16 @@ class Config:
     cycles_per_day: int = 6
     cycle_usage_ceiling: float = 0.6  # ciclos só rodam enquanto o uso do dia < 60% (o resto é dos visitantes)
     behind_proxy: bool = False        # True no Render (TLS termina no proxy)
+
+    @property
+    def remote_enabled(self) -> bool:
+        return bool(self.s3_endpoint and self.s3_bucket and self.s3_access_key and self.s3_secret_key)
+
+    @property
+    def remote_partial(self) -> bool:
+        """Alguma variável S3 preenchida, mas não todas: o armazenamento remoto fica DESLIGADO."""
+        vals = (self.s3_endpoint, self.s3_bucket, self.s3_access_key, self.s3_secret_key)
+        return any(vals) and not all(vals)
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -75,6 +104,10 @@ class Config:
             rpm_limit=int(e("ALICE_RPM_LIMIT", 25)),
             ip_rpm_limit=int(e("ALICE_IP_RPM_LIMIT", 12)),
             retention_days=int(e("ALICE_RETENTION_DAYS", 90)),
+            s3_endpoint=_clean(e("ALICE_S3_ENDPOINT")), s3_bucket=_clean(e("ALICE_S3_BUCKET")),
+            s3_region=_clean(e("ALICE_S3_REGION")) or "us-east-1", s3_access_key=_clean(e("ALICE_S3_ACCESS_KEY")),
+            s3_secret_key=_clean(e("ALICE_S3_SECRET_KEY")), s3_prefix=_clean(e("ALICE_S3_PREFIX")) or "alice",
+            backup_passphrase=_clean(e("ALICE_BACKUP_PASSPHRASE")), remote_sync_min=int(e("ALICE_REMOTE_SYNC_MIN", 5)),
             tz_offset_hours=int(e("ALICE_TZ_OFFSET_HOURS", -3)),
             embed_url=e("ALICE_EMBED_URL", ""),
             embed_key=e("ALICE_EMBED_KEY", ""),
