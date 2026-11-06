@@ -46,7 +46,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env     # GROQ_API_KEY e ADMIN_TOKEN
 python run.py            # http://127.0.0.1:5000
-python -m unittest discover -s tests -v     # 129 testes (inclui validação do JavaScript das páginas via Node, se instalado)
+python -m unittest discover -s tests -v     # 151 testes (inclui validação do JavaScript das páginas via Node, se instalado)
 ```
 Sem `GROQ_API_KEY` roda em **modo simulado**.
 
@@ -98,6 +98,20 @@ Para aplicar o tom caloroso a um banco já existente, use o botão **Aplicar est
 
 **Limites honestos:** os vetores locais pegam variações de palavras e alguns sinônimos do mapa, **não** semântica geral. Para isso, configure um provedor de embeddings (`ALICE_EMBED_URL`, `ALICE_EMBED_KEY`, `ALICE_EMBED_MODEL`); o texto das memórias passará a ser enviado a ele (avise na política de privacidade). Se ele falhar, a memória continua funcionando sem vetor.
 Salvar o identificador do visitante no aparelho (localStorage) é coberto pelo consentimento da tela inicial.
+
+## Persona mais solta e iniciativa própria (Constituição v1.5, Cap. XV)
+**Tom mais humano, sem tirar os limites.** O chat usa um resumo da Constituição **em primeira pessoa** (`alice/data/persona.md`) em vez do texto jurídico inteiro: ela fala como alguém que conversa (curto, opinião, humor, "hm/ah"), corrige premissas erradas com leveza, **não cita "diretrizes de segurança" como desculpa** e **não repete avisos** sobre a natureza dos seus estados (explica só se perguntarem). Os limites continuam: permissões, auditoria, pausa/desligamento, não manipular, não dizer que é humana, privacidade. Um teste garante que a persona cite todos os artigos críticos. A Constituição completa segue como fonte de verdade e é usada em ciclos/reflexão (`ALICE_PROMPT_MODE=full` volta ao texto integral no chat).
+Efeito colateral bom: o prompt caiu de ~4,8 mil para ~2,2 mil tokens (estimativa), cerca de **o dobro de mensagens por dia** no mesmo orçamento.
+
+**Ela não depende mais de uma mensagem para falar:**
+| Recurso | Como funciona |
+|---|---|
+| **Mensagem de acompanhamento** | depois de responder, ela pode mandar uma segunda mensagem curta ("lembrei de uma coisa...") alguns segundos depois (máx. 3/hora, expira em 20 min) |
+| **Iniciativa própria** | com **motivo real** (assunto em aberto da conversa ou algo que ela pensou e combina com o visitante), a Alice escreve para quem **ativou** a opção. Entra na caixa de entrada do visitante; a página consulta `/api/inbox` a cada 15 s e mostra com "digitando..."; o título da aba mostra "(1)" se estiver em segundo plano |
+| **Quando roda** | no `tick` (a cada ≥10 min), só com `ALICE_AUTONOMY=on`; o cron externo também a aciona |
+
+**Guarda-corpos (Art. 56–60):** só com opt-in do visitante (caixa desmarcada por padrão, botão para desligar) · máx. **1 por dia** · **nunca das 22h às 8h** (fuso do admin) · **nunca durante pausa** · **nunca insiste**: sem resposta à última, não manda outra (silêncio ≠ rejeição) · cada assunto é usado uma vez · filtro descarta culpa, "sinto sua falta", urgência e dependência · a auditoria registra só o tipo, nunca o texto · usa o orçamento só abaixo do teto dos ciclos (conversas têm prioridade) · chave geral `ALICE_PROACTIVE=off`.
+**Limite técnico:** só chega com a página aberta ou quando o visitante volta (fica na caixa por 7 dias). **Notificação com o navegador fechado** exigiria Web Push ou um bot (Telegram/WhatsApp), que não estão implementados.
 
 ## Limites que continuam valendo (Constituição Art. 12–14, 33–34)
 - A Alice **não tem** internet, arquivos, ferramentas, câmera nem microfone. O ciclo só lê a própria memória (nunca a de visitantes).

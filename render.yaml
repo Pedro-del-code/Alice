@@ -40,6 +40,8 @@ services:
         value: "on"
       - key: ALICE_AUTONOMY      # só roda enquanto o serviço está acordado; veja no README como acordá-lo por cron
         value: "on"
+      - key: ALICE_PROACTIVE     # mensagens proativas (cada visitante também precisa ativar); "off" desliga
+        value: "on"
       - key: ALICE_DAILY_TOKEN_BUDGET
         value: "150000"
       - key: ALICE_REMOTE_SYNC_MIN
