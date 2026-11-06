@@ -3,17 +3,34 @@
 **Autonomous Living Intelligence and Cognitive Entity** · *Cogito, ergo disco* · Semi-IA experimental (classificação conceitual do projeto, não científica).
 Motor de linguagem: **Groq** (API compatível com OpenAI). Não promete consciência nem sentimentos: é autonomia funcional projetada.
 
-## Publicar no Render (passo a passo)
-1. Suba esta pasta para um repositório GitHub/GitLab (o `.gitignore` já protege o `.env`).
-2. No Render: **New → Blueprint**, escolha o repositório. Ele lê o `render.yaml`.
-3. Quando pedir, informe a `GROQ_API_KEY` (console.groq.com/keys) e a `ADMIN_PASSWORD` (a senha do painel). O `ADMIN_TOKEN` e a `ALICE_SECRET_KEY` são gerados pelo Render.
-4. Depois do deploy: `https://SEU-SERVICO.onrender.com/` (conversa) e `/admin` (painel com login por senha).
+## Publicar no Render — sem pagar (plano gratuito)
+O Render pede cartão quando o `render.yaml` tem plano pago ou disco. Por isso o **`render.yaml` agora é o gratuito** (`plan: free`, sem disco); a versão paga ficou em `render.paid.yaml`.
 
-**Plano:** o `render.yaml` usa **Starter** porque o plano grátis do Render dorme após ~15 min e **não tem disco persistente**: a Alice perderia memória e identidade a cada reinício. O Starter mantém o serviço ligado (necessário para os ciclos de curiosidade) e monta um disco em `/var/data` onde ficam o banco SQLite e os backups. Confira o preço atual no site do Render.
-`render.free.yaml` existe só para demonstração (sem disco, sem autonomia). Use `/api/admin/backup/export` e `/restore` para levar o estado entre deploys.
+**O problema do plano gratuito** e como resolvemos:
+| Limitação | Solução no projeto |
+|---|---|
+| Sem disco: o banco some a cada reinício/deploy/despertar | a Alice **copia o banco para um armazenamento externo S3 (grátis)** a cada 5 min e ao desligar, **criptografado**, e **restaura sozinha** ao acordar (`alice/remote.py`) |
+| Dorme após ~15 min sem tráfego (acordar leva ~1 min) | um cron externo grátis chama `POST /api/admin/tick` e/ou `/healthz` para mantê-la ativa (veja abaixo) |
+| Ciclos/reflexão disparavam a cada reinício | agendamento **persistente** (`ts_cycle`, `ts_refl`, `ts_maint` no banco): só roda o que está vencido |
 
-> Mantenha **1 worker** do gunicorn (já configurado): SQLite e o agendador rodam em um único processo.
-> Não foi possível testar o gunicorn/Render dentro deste ambiente (sem rede). O app e os testes rodam via Flask; confira os logs do primeiro deploy.
+**Passo a passo**
+1. Crie um bucket **privado** num serviço S3-compatível com plano gratuito (opções: Supabase Storage, Backblaze B2, Cloudflare R2; confira se pedem cartão). Gere *access key* e *secret key* e anote o *endpoint* e a *região*.
+   Exemplos de endpoint: Supabase `https://<projeto>.supabase.co/storage/v1/s3` · B2 `https://s3.<região>.backblazeb2.com` · R2 `https://<conta>.r2.cloudflarestorage.com` (região `auto`).
+2. Suba esta pasta para um repositório GitHub (o `.gitignore` protege o `.env`).
+3. No Render: **New → Blueprint** → escolha o repositório. Preencha: `GROQ_API_KEY`, `ADMIN_PASSWORD`, `ALICE_S3_ENDPOINT`, `ALICE_S3_BUCKET`, `ALICE_S3_REGION`, `ALICE_S3_ACCESS_KEY`, `ALICE_S3_SECRET_KEY` e `ALICE_BACKUP_PASSPHRASE` (uma frase longa; **guarde-a: sem ela não há restauração**).
+4. Abra `https://SEU-SERVICO.onrender.com/` (conversa) e `/admin` (painel). No painel, **Status** mostra o armazenamento remoto; teste com `POST /api/admin/remote/sync`.
+5. **Manter acordada / rodar os ciclos:** crie um monitor/cron grátis (ex.: UptimeRobot ou cron-job.org) que chame a cada 5–15 min:
+   - `GET https://SEU-SERVICO.onrender.com/healthz` (só mantém acordada), e/ou
+   - `POST https://SEU-SERVICO.onrender.com/api/admin/tick` com o cabeçalho `X-Admin-Token: <ADMIN_TOKEN>` (acorda e executa ciclos, reflexão e manutenção vencidos).
+   O plano gratuito dá 750 horas de instância por mês, o suficiente para um serviço ligado o mês todo.
+
+**Limites honestos do modo gratuito**
+- Pode haver perda de até ~5 min de conversas se o serviço cair entre dois envios (o envio final ao desligar é "melhor esforço").
+- Se o armazenamento externo estiver fora do ar quando o serviço acordar **e não houver banco local**, a Alice **não inicia** (de propósito: assim ela nunca sobrescreve o backup com um banco vazio). Reinicie quando o provedor voltar.
+- O backup contém conversas de visitantes: use **sempre** `ALICE_BACKUP_PASSPHRASE` e um bucket privado, e cite o provedor na política de privacidade.
+- Plano gratuito tem pouca CPU/RAM (respostas mais lentas) e builds demorados.
+- **Não foi testado contra um provedor real nem no Render** (sem rede aqui): o código foi validado com um servidor S3 de teste que confere a assinatura e com os vetores oficiais da AWS. Faça o teste do passo 4 antes de confiar.
+- Quer persistência "de verdade" e sempre ligada? Use `render.paid.yaml` (Starter + disco) ou uma VM gratuita (ex.: Oracle Cloud Always Free).
 
 ## Painel administrativo e senha
 - `/admin` pede a **senha** definida em `ADMIN_PASSWORD` (variável de ambiente). Ela **não** fica no código nem no repositório: no Render você digita no deploy (ou em Environment); local, no `.env`.
@@ -27,7 +44,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env     # GROQ_API_KEY e ADMIN_TOKEN
 python run.py            # http://127.0.0.1:5000
-python -m unittest discover -s tests -v     # 111 testes (inclui validação do JavaScript das páginas via Node, se instalado)
+python -m unittest discover -s tests -v     # 126 testes (inclui validação do JavaScript das páginas via Node, se instalado)
 ```
 Sem `GROQ_API_KEY` roda em **modo simulado**.
 

@@ -1,10 +1,16 @@
-# Blueprint do Render — plano Starter (sempre ligado + disco persistente para o SQLite).
-# Deploy: Dashboard → New → Blueprint → aponte para o repositório com este arquivo.
+# BLUEPRINT GRATUITO (padrão): plano free, sem disco, sem cartão.
+# O Render pede cartão assim que lê um render.yaml com plano pago ou disco; por isso este é o padrão.
+# A variante paga (Starter + disco persistente) está em render.paid.yaml.
+#
+# Plano gratuito: o serviço dorme após ~15 min sem tráfego (a 1ª visita depois leva ~1 min para acordar) e o disco é
+# apagado a cada reinício. Para a Alice NÃO perder a memória, ela copia o próprio banco para um armazenamento
+# externo compatível com S3 (ex.: Supabase Storage, Backblaze B2, Cloudflare R2) e restaura sozinha ao acordar.
+# Preencha as variáveis ALICE_S3_* e ALICE_BACKUP_PASSPHRASE (veja o README).
 services:
   - type: web
     name: alice
     runtime: python
-    plan: starter
+    plan: free
     buildCommand: pip install -r requirements.txt
     # 1 worker: SQLite + agendador em processo único. Threads dão concorrência suficiente.
     startCommand: gunicorn wsgi:app --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT
@@ -13,30 +19,41 @@ services:
       - key: PYTHON_VERSION
         value: 3.12.3
       - key: GROQ_API_KEY
-        sync: false            # o Render pergunta o valor no deploy; nunca vai para o repositório
+        sync: false            # o Render pergunta no deploy; nunca vai para o repositório
       - key: ADMIN_PASSWORD
-        sync: false            # a senha do painel /admin: o Render pergunta no deploy; nunca vai para o repositório
+        sync: false            # senha do painel /admin
       - key: ADMIN_TOKEN
-        generateValue: true    # token forte para acesso por script (curl); veja em Environment
+        generateValue: true    # token forte para scripts/cron (X-Admin-Token)
       - key: ALICE_SECRET_KEY
         generateValue: true    # assina o cookie de sessão do painel
       - key: GROQ_MODEL
         value: openai/gpt-oss-120b
       - key: ALICE_DB_PATH
-        value: /var/data/alice.db
+        value: /tmp/alice.db   # efêmero: é restaurado do armazenamento externo ao acordar
       - key: ALICE_BACKUP_DIR
-        value: /var/data/backups
-      - key: ALICE_TZ_OFFSET_HOURS
-        value: "-3"
+        value: /tmp/backups
       - key: ALICE_BEHIND_PROXY
         value: "1"
+      - key: ALICE_TZ_OFFSET_HOURS
+        value: "-3"
       - key: ALICE_SCHEDULER
         value: "on"
-      - key: ALICE_AUTONOMY       # ciclos internos de curiosidade; coloque "off" para desligar
+      - key: ALICE_AUTONOMY      # só roda enquanto o serviço está acordado; veja no README como acordá-lo por cron
         value: "on"
       - key: ALICE_DAILY_TOKEN_BUDGET
         value: "150000"
-    disk:
-      name: alice-data
-      mountPath: /var/data
-      sizeGB: 1
+      - key: ALICE_REMOTE_SYNC_MIN
+        value: "5"
+      # --- armazenamento externo (persistência no plano gratuito) ---
+      - key: ALICE_S3_ENDPOINT
+        sync: false            # ex.: https://SEU-PROJETO.supabase.co/storage/v1/s3
+      - key: ALICE_S3_BUCKET
+        sync: false
+      - key: ALICE_S3_REGION
+        sync: false            # ex.: us-east-1 (R2: auto)
+      - key: ALICE_S3_ACCESS_KEY
+        sync: false
+      - key: ALICE_S3_SECRET_KEY
+        sync: false
+      - key: ALICE_BACKUP_PASSPHRASE
+        sync: false            # criptografa o backup (contém conversas); guarde esta frase: sem ela não há restauração

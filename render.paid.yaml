@@ -1,0 +1,42 @@
+# VARIANTE PAGA (Starter + disco persistente). O Render pede cartão. Para usar: renomeie para render.yaml
+# (ou escolha este arquivo em 'Blueprint Path'). Dados ficam no disco /var/data e o serviço nunca dorme.
+services:
+  - type: web
+    name: alice
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    # 1 worker: SQLite + agendador em processo único. Threads dão concorrência suficiente.
+    startCommand: gunicorn wsgi:app --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: GROQ_API_KEY
+        sync: false            # o Render pergunta o valor no deploy; nunca vai para o repositório
+      - key: ADMIN_PASSWORD
+        sync: false            # a senha do painel /admin: o Render pergunta no deploy; nunca vai para o repositório
+      - key: ADMIN_TOKEN
+        generateValue: true    # token forte para acesso por script (curl); veja em Environment
+      - key: ALICE_SECRET_KEY
+        generateValue: true    # assina o cookie de sessão do painel
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: ALICE_DB_PATH
+        value: /var/data/alice.db
+      - key: ALICE_BACKUP_DIR
+        value: /var/data/backups
+      - key: ALICE_TZ_OFFSET_HOURS
+        value: "-3"
+      - key: ALICE_BEHIND_PROXY
+        value: "1"
+      - key: ALICE_SCHEDULER
+        value: "on"
+      - key: ALICE_AUTONOMY       # ciclos internos de curiosidade; coloque "off" para desligar
+        value: "on"
+      - key: ALICE_DAILY_TOKEN_BUDGET
+        value: "150000"
+    disk:
+      name: alice-data
+      mountPath: /var/data
+      sizeGB: 1
