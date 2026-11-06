@@ -24,6 +24,8 @@ O Render pede cartão quando o `render.yaml` tem plano pago ou disco. Por isso o
    - `POST https://SEU-SERVICO.onrender.com/api/admin/tick` com o cabeçalho `X-Admin-Token: <ADMIN_TOKEN>` (acorda e executa ciclos, reflexão e manutenção vencidos).
    O plano gratuito dá 750 horas de instância por mês, o suficiente para um serviço ligado o mês todo.
 
+**Quais variáveis são obrigatórias?** Só `GROQ_API_KEY` e `ADMIN_PASSWORD`. O `ADMIN_TOKEN` e a `ALICE_SECRET_KEY` o Render gera. As 6 do armazenamento (`ALICE_S3_*` e `ALICE_BACKUP_PASSPHRASE`) são **opcionais**: preencha **todas ou nenhuma**. Sem elas funciona, mas a memória zera a cada reinício/sono. Se o painel do Render exigir um valor, digite `-` (conta como vazio). Parcial = desligado (aviso nos logs).
+
 **Limites honestos do modo gratuito**
 - Pode haver perda de até ~5 min de conversas se o serviço cair entre dois envios (o envio final ao desligar é "melhor esforço").
 - Se o armazenamento externo estiver fora do ar quando o serviço acordar **e não houver banco local**, a Alice **não inicia** (de propósito: assim ela nunca sobrescreve o backup com um banco vazio). Reinicie quando o provedor voltar.
@@ -44,7 +46,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env     # GROQ_API_KEY e ADMIN_TOKEN
 python run.py            # http://127.0.0.1:5000
-python -m unittest discover -s tests -v     # 126 testes (inclui validação do JavaScript das páginas via Node, se instalado)
+python -m unittest discover -s tests -v     # 129 testes (inclui validação do JavaScript das páginas via Node, se instalado)
 ```
 Sem `GROQ_API_KEY` roda em **modo simulado**.
 
