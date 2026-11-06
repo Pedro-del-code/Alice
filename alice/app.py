@@ -18,6 +18,7 @@ from .config import Config
 from .db import Database
 from .identity import IdentityCore, IdentityError
 from .llm_gateway import LLMError, build_gateway
+from .outreach import run_outreach
 from .remote import RemoteSync
 from .scheduler import run_maintenance, tick
 from .ui import ADMIN_HTML, INDEX_HTML
@@ -151,7 +152,7 @@ def create_app(cfg: Config | None = None, gateway=None) -> Flask:
     @app.post("/api/session")
     def session():
         d = request.get_json(silent=True) or {}
-        return jsonify(svc.create_session(d.get("name"), bool(d.get("consent"))))
+        return jsonify(svc.create_session(d.get("name"), bool(d.get("consent")), bool(d.get("proactive"))))
 
     @app.post("/api/chat")
     def chat():
@@ -169,6 +170,25 @@ def create_app(cfg: Config | None = None, gateway=None) -> Flask:
                        else "Orçamento diário de uso esgotado; volte amanhã.", 429)
         except LLMError:
             return bad("O provedor de IA falhou. Tente novamente.", 502)
+
+    inbox_limiter = security.RateLimiter(60)
+
+    @app.get("/api/inbox")
+    def inbox():
+        if not inbox_limiter.allow(request.remote_addr or "?"):
+            return bad("muitas consultas", 429)
+        msgs = svc.inbox(request.headers.get("X-Session-Token", ""))
+        return jsonify(messages=msgs) if msgs is not None else bad("sessão não encontrada", 404)
+
+    @app.get("/api/visitor/proactive")
+    def get_proactive():
+        v = svc.get_proactive(request.headers.get("X-Session-Token", ""))
+        return jsonify(enabled=v) if v is not None else bad("sessão não encontrada", 404)
+
+    @app.post("/api/visitor/proactive")
+    def set_proactive():
+        v = svc.set_proactive(request.headers.get("X-Session-Token", ""), bool((request.get_json(silent=True) or {}).get("enabled")))
+        return jsonify(enabled=v) if v is not None else bad("sessão não encontrada", 404)
 
     @app.get("/api/session/me")
     def session_me():
@@ -514,6 +534,18 @@ def create_app(cfg: Config | None = None, gateway=None) -> Flask:
         with db.conn() as c:
             audit.log(c, "admin", "backup_restored", {"safety_backup": safety.name}, level="warning")
         return jsonify(ok=True, safety_backup=safety.name)
+
+    @app.post("/api/admin/outreach/run")
+    @admin_only
+    def outreach_run():
+        return jsonify(run_outreach(svc, actor="admin-trigger"))
+
+    @app.get("/api/admin/outreach")
+    @admin_only
+    def outreach_list():
+        with db.conn() as c:
+            rows = [dict(r) for r in c.execute("SELECT id, visitor_id, kind, text, created_at, delivered_at FROM proactive_messages ORDER BY id DESC LIMIT 50")]
+        return jsonify(rows)
 
     @app.post("/api/admin/tick")
     @admin_only

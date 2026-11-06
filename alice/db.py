@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS personality_versions (
 CREATE TABLE IF NOT EXISTS visitors (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   token_hash TEXT NOT NULL UNIQUE,
-  display_name TEXT, created_at TEXT NOT NULL, last_seen TEXT NOT NULL
+  display_name TEXT, created_at TEXT NOT NULL, last_seen TEXT NOT NULL,
+  proactive INTEGER NOT NULL DEFAULT 0, last_proactive_at TEXT
 );
 CREATE TABLE IF NOT EXISTS memories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,6 +31,13 @@ CREATE TABLE IF NOT EXISTS memories (
   uses INTEGER NOT NULL DEFAULT 0,
   importance REAL NOT NULL DEFAULT 0.5, last_used_at TEXT, archived_at TEXT,
   pinned INTEGER NOT NULL DEFAULT 0, emb TEXT, emb_name TEXT
+);
+CREATE TABLE IF NOT EXISTS proactive_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  visitor_id INTEGER NOT NULL REFERENCES visitors(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('outreach','followup')),
+  text TEXT NOT NULL, seed TEXT,
+  created_at TEXT NOT NULL, deliver_after TEXT NOT NULL, expires_at TEXT, delivered_at TEXT
 );
 CREATE TABLE IF NOT EXISTS memory_links (
   a INTEGER NOT NULL, b INTEGER NOT NULL, weight REAL NOT NULL, PRIMARY KEY (a, b)
@@ -122,6 +130,11 @@ class Database:
             if "hash" not in cols:  # migração de bancos da Fase 1
                 c.execute("ALTER TABLE audit_log ADD COLUMN prev_hash TEXT")
                 c.execute("ALTER TABLE audit_log ADD COLUMN hash TEXT")
+            vcols = {r[1] for r in c.execute("PRAGMA table_info(visitors)")}
+            if "proactive" not in vcols:
+                c.execute("ALTER TABLE visitors ADD COLUMN proactive INTEGER NOT NULL DEFAULT 0")
+            if "last_proactive_at" not in vcols:
+                c.execute("ALTER TABLE visitors ADD COLUMN last_proactive_at TEXT")
             mcols = {r[1] for r in c.execute("PRAGMA table_info(memories)")}
             if "uses" not in mcols:
                 c.execute("ALTER TABLE memories ADD COLUMN uses INTEGER NOT NULL DEFAULT 0")

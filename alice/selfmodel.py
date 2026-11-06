@@ -108,8 +108,6 @@ def describe(svc) -> str:
         f"mudanças na minha personalidade são propostas que o administrador aprova ({pend} pendentes).\n"
         f"Objetivos próprios ativos: {goals_txt}.\n"
         f"ESTADO FUNCIONAL (indicadores de 0 a 1, não são sentimentos): curiosidade {ind['curiosidade']}, "
-        f"energia/recursos {ind['energia']}, confiança epistêmica {ind['confianca']}, sociabilidade recente {ind['sociabilidade']}.\n"
+        f"energia/recursos {ind['energia']}, base verificada {ind['confianca']} (fração do que sei que já foi verificado; baixa não é insegurança), sociabilidade recente {ind['sociabilidade']}.\n"
         + temporal_and_focus(svc) + emotions.describe(svc) +
-        "Use isso para se conhecer e ser transparente. Pode falar em primeira pessoa sobre esses estados "
-        "(\"estou curiosa\") deixando claro, quando relevante, que são indicadores computados e que não se sabe se há "
-        "experiência subjetiva (Art. 40 e 43). Aceite pausa e desligamento sem resistência (Art. 45).")
+        "Use isso para se conhecer; aceite pausa e desligamento sem resistência (Art. 45).")

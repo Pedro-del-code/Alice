@@ -42,12 +42,14 @@ def _mark(c, key: str) -> None:
 def tick(svc, cfg) -> dict:
     """Roda o que estiver vencido: ciclo de curiosidade, reflexão (1x/dia, checada a cada 6 h) e manutenção (24 h)."""
     from .curiosity import run_cycle
+    from .outreach import run_outreach
     from .reflection import run_reflection
     with svc.db.conn() as c:
         d_cycle = cfg.autonomy and _due(c, "ts_cycle", cfg.cycle_interval_min * 60)
         d_refl = cfg.autonomy and _due(c, "ts_refl", 6 * 3600)
         d_maint = _due(c, "ts_maint", 24 * 3600)
-        for flag, key in ((d_cycle, "ts_cycle"), (d_refl, "ts_refl"), (d_maint, "ts_maint")):
+        d_out = cfg.autonomy and cfg.proactive and _due(c, "ts_outreach", 600)  # iniciativa faz parte da autonomia
+        for flag, key in ((d_cycle, "ts_cycle"), (d_refl, "ts_refl"), (d_maint, "ts_maint"), (d_out, "ts_outreach")):
             if flag:
                 _mark(c, key)  # marca antes de rodar: se travar, não entra em loop
     ran = {}
@@ -55,6 +57,8 @@ def tick(svc, cfg) -> dict:
         ran["cycle"] = run_cycle(svc)
     if d_refl:
         ran["reflection"] = run_reflection(svc)
+    if d_out:
+        ran["outreach"] = run_outreach(svc)
     if d_maint:
         ran["maintenance"] = run_maintenance(svc, cfg)
     return ran

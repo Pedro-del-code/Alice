@@ -65,6 +65,12 @@ class Config:
     s3_prefix: str = "alice"
     backup_passphrase: str = field(default="", repr=False)  # criptografa o backup antes de enviar
     remote_sync_min: int = 5
+    prompt_mode: str = "compact"      # compact: persona em 1ª pessoa (~800 tokens) | full: Constituição inteira em cada mensagem
+    proactive: bool = True            # chave geral das mensagens proativas (cada visitante também precisa ativar)
+    outreach_per_day: int = 1
+    outreach_min_gap_h: int = 20
+    outreach_inactive_days: int = 30
+    followups_per_hour: int = 3
     retention_days: int = 90          # visitantes inativos são apagados (Art. 30)
     # Autonomia (Fase 3) — tudo limitado e auditado
     scheduler: bool = False
@@ -104,6 +110,10 @@ class Config:
             rpm_limit=int(e("ALICE_RPM_LIMIT", 25)),
             ip_rpm_limit=int(e("ALICE_IP_RPM_LIMIT", 12)),
             retention_days=int(e("ALICE_RETENTION_DAYS", 90)),
+            prompt_mode=_clean(e("ALICE_PROMPT_MODE")) or "compact",
+            proactive=_b(e("ALICE_PROACTIVE", "on")),
+            outreach_per_day=int(e("ALICE_OUTREACH_PER_DAY", 1)),
+            followups_per_hour=int(e("ALICE_FOLLOWUPS_PER_HOUR", 3)),
             s3_endpoint=_clean(e("ALICE_S3_ENDPOINT")), s3_bucket=_clean(e("ALICE_S3_BUCKET")),
             s3_region=_clean(e("ALICE_S3_REGION")) or "us-east-1", s3_access_key=_clean(e("ALICE_S3_ACCESS_KEY")),
             s3_secret_key=_clean(e("ALICE_S3_SECRET_KEY")), s3_prefix=_clean(e("ALICE_S3_PREFIX")) or "alice",

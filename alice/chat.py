@@ -4,7 +4,8 @@ import re
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from . import audit, emotions, memory, profiles, selfmodel, style
+from . import audit, emotions, memory, outreach, profiles, selfmodel, style
+from . import style as _style  # noqa: F401
 from .budget import Budget, BudgetExceeded
 from .curiosity import is_unsafe
 from .llm_gateway import LLMError
@@ -12,6 +13,7 @@ from .util import now
 
 MEM_TAG = re.compile(r"\[\[MEMORIA:\s*(\w+)\s*\|\s*(.+?)\s*\]\]", re.S)
 SELF_CATEGORIES = {"learning", "reflection", "visitor"}
+FOLLOW = re.compile(r"\[\[DEPOIS:\s*(.+?)\s*\]\]", re.S)
 THOUGHT = re.compile(r"<pensamento>(.*?)</pensamento>", re.S | re.I)
 
 
@@ -56,16 +58,16 @@ class AliceService:
     def _hash(token: str) -> str:
         return hashlib.sha256(token.encode()).hexdigest()
 
-    def create_session(self, name: str | None, consent: bool) -> dict:
+    def create_session(self, name: str | None, consent: bool, proactive: bool = False) -> dict:
         """Sem consentimento nada é gravado: a conversa fica só no navegador do visitante."""
         if not consent:
             return {"token": None, "stored": False}
         name = (name or "").strip()[:40] or None
         token = secrets.token_urlsafe(32)
         with self.db.conn() as c:
-            c.execute("INSERT INTO visitors(token_hash, display_name, created_at, last_seen) VALUES (?,?,?,?)",
-                      (self._hash(token), name, now(), now()))
-            audit.log(c, "visitor", "session_created", {"named": bool(name)})
+            c.execute("INSERT INTO visitors(token_hash, display_name, created_at, last_seen, proactive) VALUES (?,?,?,?,?)",
+                      (self._hash(token), name, now(), now(), 1 if proactive else 0))
+            audit.log(c, "visitor", "session_created", {"named": bool(name), "proactive": bool(proactive)})
         return {"token": token, "stored": True}
 
     def _visitor(self, c, token: str | None):
@@ -114,6 +116,30 @@ class AliceService:
         with self.db.conn() as c:
             v = self._visitor(c, token)
             return profiles.clear(c, v["id"]) if v else False
+
+    def inbox(self, token: str) -> list[dict] | None:
+        """Mensagens que a Alice quis mandar por conta própria (acompanhamento ou iniciativa)."""
+        with self.db.conn() as c:
+            v = self._visitor(c, token)
+            if not v:
+                return None
+            if self.is_paused():
+                return []
+            return outreach.inbox(c, v["id"])
+
+    def get_proactive(self, token: str) -> bool | None:
+        with self.db.conn() as c:
+            v = self._visitor(c, token)
+            return None if not v else bool(v["proactive"])
+
+    def set_proactive(self, token: str, enabled: bool) -> bool | None:
+        with self.db.conn() as c:
+            v = self._visitor(c, token)
+            if not v:
+                return None
+            c.execute("UPDATE visitors SET proactive = ? WHERE id = ?", (1 if enabled else 0, v["id"]))
+            audit.log(c, "visitor", "proactive_on" if enabled else "proactive_off")
+            return enabled
 
     def purge_thoughts(self, days: int) -> int:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
@@ -177,7 +203,8 @@ class AliceService:
         self.budget.check()  # pode levantar BudgetExceeded
         messages = [{"role": "system", "content": self.identity.system_prompt(
             mems, name, self_block=selfmodel.describe(self), deliberate=self.cfg.deliberate,
-            visitor_block=vblock, style_block=style.hint(message, prev_user))}] \
+            visitor_block=vblock, style_block=style.hint(message, prev_user),
+            compact=self.cfg.prompt_mode != "full")}] \
             + hist + [{"role": "user", "content": message}]
         try:
             result = self.gateway.chat(messages, max_tokens=self.cfg.max_output_tokens)
@@ -189,6 +216,9 @@ class AliceService:
         self.budget.record(result.tokens_in, result.tokens_out)
 
         thought, text = split_thought(result.text)
+        fm = FOLLOW.search(text)  # mensagem de acompanhamento ("lembrei de uma coisa")
+        follow = fm.group(1) if fm else ""
+        text = FOLLOW.sub("", text)
         reply, saved = self._extract_memories(text, vid)
         if not reply:
             reply = "Desculpe, não consegui formular uma resposta agora. Pode reformular?"
@@ -197,6 +227,8 @@ class AliceService:
                 for role, content in (("user", message), ("assistant", reply)):
                     c.execute("INSERT INTO messages(visitor_id, role, content, created_at) VALUES (?,?,?,?)",
                               (vid, role, content, now()))
+            if visitor and follow:
+                outreach.queue_followup(c, self.cfg, vid, follow)
             if visitor and thought:  # raciocínio só é guardado com consentimento; apagado em ~7 dias
                 c.execute("INSERT INTO thoughts(visitor_id, content, created_at) VALUES (?,?,?)", (vid, thought, now()))
             # Auditoria registra metadados, nunca o conteúdo da conversa.

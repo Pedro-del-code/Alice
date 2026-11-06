@@ -31,6 +31,8 @@ button{padding:10px 14px;border-radius:10px;border:0;background:var(--acc);color
 <div id="consent">
   <label><input type="checkbox" id="ok"> Permito que a Alice guarde minhas conversas, meu nome e notas curtas sobre mim (e um identificador neste aparelho) para lembrar de mim.
   Posso ver, exportar ou apagar tudo quando quiser. Sem marcar, nada é salvo.</label>
+  <label style="display:block;margin-top:6px"><input type="checkbox" id="pro"> Posso receber mensagens da Alice quando ela tiver algo a dizer
+  (no máximo 1 por dia, nunca à noite; se eu não responder, ela não insiste). Posso desligar quando quiser.</label>
   <input type="text" id="name" maxlength="40" placeholder="Como quer ser chamado? (opcional)">
   <small>As mensagens são processadas por um serviço externo de IA (Groq). Não envie dados sensíveis.</small><br>
   <button id="start">Começar</button>
@@ -38,7 +40,8 @@ button{padding:10px 14px;border-radius:10px;border:0;background:var(--acc);color
 <div id="log"></div>
 <form id="f" style="display:none"><input id="msg" autocomplete="off" placeholder="Escreva para a Alice..." maxlength="2000">
 <button>Enviar</button></form>
-<div style="text-align:center"><button class="link" id="exp" style="display:none">Exportar meus dados</button>
+<div style="text-align:center"><button class="link" id="ptog" style="display:none">Mensagens da Alice: ...</button>
+<button class="link" id="exp" style="display:none">Exportar meus dados</button>
 <button class="link" id="del" style="display:none">Apagar meus dados</button></div>
 <script nonce="{{NONCE}}">
 let token=null, hist=[], timer=null;
@@ -53,10 +56,28 @@ async function deliver(first,text){            // cada parágrafo vira uma mensa
   first.textContent=parts[0];
   for(const p of parts.slice(1)){const b=add('...','a');await sleep(Math.min(1400,400+p.length*18));b.textContent=p;log.scrollTop=log.scrollHeight}
 }
-function enter(stored){$('consent').style.display='none';$('f').style.display='flex';if(stored){$('del').style.display='inline';$('exp').style.display='inline'}}
+let pollT=null, unread=0, proOn=false;
+function showPro(){$('ptog').textContent='Mensagens da Alice: '+(proOn?'ligadas':'desligadas')}
+async function poll(){
+  if(!token)return;
+  try{const r=await fetch('/api/inbox',{headers:{'X-Session-Token':token}}); if(!r.ok)return;
+    const d=await r.json();
+    for(const m of d.messages){const b=add('...','a');await sleep(Math.min(1500,400+m.text.length*15));b.textContent=m.text;
+      if(document.hidden){unread++;document.title='('+unread+') A.L.I.C.E.'}}
+  }catch(_){}
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){unread=0;document.title='A.L.I.C.E.'}});
+async function enter(stored){$('consent').style.display='none';$('f').style.display='flex';
+  if(stored){$('del').style.display='inline';$('exp').style.display='inline';$('ptog').style.display='inline';
+    try{const r=await fetch('/api/visitor/proactive',{headers:{'X-Session-Token':token}});if(r.ok){proOn=(await r.json()).enabled;showPro()}}catch(_){}
+    if(!pollT){pollT=setInterval(poll,15000);poll()}}}
+$('ptog').onclick=async()=>{
+  const r=await fetch('/api/visitor/proactive',{method:'POST',headers:{'Content-Type':'application/json','X-Session-Token':token},body:JSON.stringify({enabled:!proOn})});
+  if(r.ok){proOn=(await r.json()).enabled;showPro()}
+};
 (async()=>{try{const d=await(await fetch('/api/state')).json();face(d.avatar_hint);
   const p=x=>Math.round(x*100)+'%';
-  $('st').textContent='humor: '+d.afeto.humor+' · curiosidade '+p(d.curiosidade)+' · energia '+p(d.energia)+' · confiança '+p(d.confianca)+' (estados funcionais computados)'}catch(_){}})();
+  $('st').textContent='humor: '+d.afeto.humor+' · curiosidade '+p(d.curiosidade)+' · energia '+p(d.energia)+' · base verificada '+p(d.confianca)+' (estados funcionais computados)'}catch(_){}})();
 (async()=>{                                    // reconhece quem voltou (só com consentimento)
   const t=ls.get('alice_token'); if(!t)return;
   const r=await fetch('/api/session/me',{headers:{'X-Session-Token':t}});
@@ -74,7 +95,7 @@ $('jbtn').onclick=async()=>{
 };
 $('start').onclick=async()=>{
   const r=await fetch('/api/session',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({consent:$('ok').checked,name:$('name').value})});
+    body:JSON.stringify({consent:$('ok').checked,name:$('name').value,proactive:$('pro').checked})});
   const d=await r.json(); token=d.token; if(d.stored)ls.set('alice_token',token);
   enter(d.stored);
   let hi='Olá! Eu sou a Alice. Sobre o que você está curioso hoje?';
@@ -102,7 +123,7 @@ $('exp').onclick=async()=>{
 $('del').onclick=async()=>{
   if(!confirm('Apagar todos os seus dados no servidor (conversas, lembranças e notas)?'))return;
   await fetch('/api/visitor',{method:'DELETE',headers:{'X-Session-Token':token}});
-  ls.del('alice_token');token=null;hist=[];log.textContent='';$('del').style.display='none';$('exp').style.display='none';add('Seus dados foram apagados.','a');
+  ls.del('alice_token');clearInterval(pollT);pollT=null;token=null;hist=[];log.textContent='';$('ptog').style.display='none';$('del').style.display='none';$('exp').style.display='none';add('Seus dados foram apagados.','a');
 };
 </script></body></html>"""
 
@@ -145,7 +166,7 @@ const A=[['Status','GET','/api/admin/status'],['Humor e emoções','GET','/api/a
 ['Autoconhecimento','GET','/api/admin/self'],['Autobiografia','GET','/api/admin/autobiography'],['Propostas','GET','/api/admin/proposals?status=pending'],
 ['Objetivos','GET','/api/admin/goals'],['Pensamentos','GET','/api/admin/thoughts'],['Memórias','GET','/api/admin/memories'],['Memórias arquivadas','GET','/api/admin/memories?archived=1'],['Consolidar memória','POST','/api/admin/memories/consolidate'],
 ['Temas','GET','/api/admin/topics'],['Investigações','GET','/api/admin/investigations'],['Personalidade','GET','/api/admin/personality'],
-['Rodar ciclo','POST','/api/admin/cycle'],['Refletir agora','POST','/api/admin/reflect?force=1'],
+['Rodar ciclo','POST','/api/admin/cycle'],['Rodar iniciativa','POST','/api/admin/outreach/run'],['Mensagens proativas','GET','/api/admin/outreach'],['Refletir agora','POST','/api/admin/reflect?force=1'],
 ['Auditoria','GET','/api/admin/audit?limit=30'],['Verificar cadeia','GET','/api/admin/audit/verify'],
 ['Backups','GET','/api/admin/backups'],['Criar backup','POST','/api/admin/backups'],['Manutenção','POST','/api/admin/maintenance'],
 ['Pausar','POST','/api/admin/pause'],['Retomar','POST','/api/admin/resume']];

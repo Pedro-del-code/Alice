@@ -232,5 +232,6 @@ def export_visitor(c, visitor_id: int) -> dict:
     msgs = c.execute("SELECT role, content, created_at FROM messages WHERE visitor_id = ? ORDER BY id", (visitor_id,)).fetchall()
     mems = c.execute("SELECT id, content, certainty, created_at FROM memories WHERE visitor_id = ? AND deleted_at IS NULL", (visitor_id,)).fetchall()
     prof = c.execute("SELECT summary, open_threads, updated_at FROM visitor_profiles WHERE visitor_id = ?", (visitor_id,)).fetchone()
+    pm = c.execute("SELECT kind, text, created_at, delivered_at FROM proactive_messages WHERE visitor_id = ? ORDER BY id", (visitor_id,)).fetchall()
     return {"visitor": dict(v), "messages": [dict(m) for m in msgs], "memories": [dict(m) for m in mems],
-            "profile": dict(prof) if prof else None}
+            "profile": dict(prof) if prof else None, "proactive_messages": [dict(m) for m in pm]}
