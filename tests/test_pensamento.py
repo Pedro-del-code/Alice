@@ -91,7 +91,7 @@ class Deliberacao(unittest.TestCase):
 
 class AutoModelo(unittest.TestCase):
     def test_prompt_has_self_model_time_focus_and_honesty(self):
-        app, c, gw, _ = make()
+        app, c, gw, _ = make(prompt_mode="full")  # texto integral da Constituição
         c.post("/api/chat", json={"message": "oi"})
         sp = gw.calls[0][0]["content"]
         for need in ["AUTOCONHECIMENTO", "não são sentimentos", "Consciência temporal", "Foco de atenção atual",

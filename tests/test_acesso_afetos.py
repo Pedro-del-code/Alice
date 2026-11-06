@@ -149,7 +149,7 @@ class AfetosFuncionais(unittest.TestCase):
         self.assertLess(v, 0.15)  # ficou pior que o normal, mas limitado
 
     def test_prompt_has_affect_block_with_guardrails(self):
-        app, c, cfg = make()
+        app, c, cfg = make(prompt_mode="full")
         gw = app.extensions["alice"].gateway
         c.post("/api/chat", json={"message": "oi"})
         sp = gw.calls[0][0]["content"]
