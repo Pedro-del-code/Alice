@@ -261,15 +261,20 @@ class Fase6Seguranca(unittest.TestCase):
 
 
 class RenderConfig(unittest.TestCase):
-    def test_blueprint(self):
+    def test_default_blueprint_is_free_and_card_free(self):
         y = (ROOT / "render.yaml").read_text(encoding="utf-8")
-        for need in ["plan: starter", "healthCheckPath: /healthz", "--workers 1", "wsgi:app", "$PORT",
-                     "mountPath: /var/data", "/var/data/alice.db", "key: GROQ_API_KEY\n        sync: false",
-                     "generateValue: true", 'ALICE_BEHIND_PROXY\n        value: "1"']:
+        for need in ["plan: free", "healthCheckPath: /healthz", "--workers 1", "wsgi:app", "$PORT", "/tmp/alice.db",
+                     "key: GROQ_API_KEY\n        sync: false", "generateValue: true", 'ALICE_BEHIND_PROXY\n        value: "1"',
+                     "key: ALICE_S3_SECRET_KEY\n        sync: false", "key: ALICE_BACKUP_PASSPHRASE\n        sync: false"]:
             self.assertIn(need, y)
+        self.assertNotIn("plan: starter", y); self.assertNotIn("\n    disk:", y)  # nada que faça o Render pedir cartão
         self.assertNotIn("gsk_", y)
-        f = (ROOT / "render.free.yaml").read_text(encoding="utf-8")
-        self.assertIn("plan: free", f); self.assertNotIn("disk:", f)
+        self.assertFalse((ROOT / "render.free.yaml").exists())
+
+    def test_paid_variant_kept(self):
+        y = (ROOT / "render.paid.yaml").read_text(encoding="utf-8")
+        for need in ["plan: starter", "mountPath: /var/data", "/var/data/alice.db", "--workers 1"]:
+            self.assertIn(need, y)
 
     def test_gitignore_protects_secrets(self):
         self.assertIn(".env", (ROOT / ".gitignore").read_text())
