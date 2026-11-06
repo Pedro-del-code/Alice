@@ -1,0 +1,28 @@
+# SOMENTE DEMONSTRAÇÃO. O plano gratuito do Render dorme após ~15 min sem tráfego e NÃO tem disco persistente:
+# memória, identidade e histórico voltam ao zero a cada reinício/deploy. Use /api/admin/backup/export e
+# /api/admin/backup/restore para levar o estado de um deploy ao outro. Agendador e autonomia ficam desligados.
+services:
+  - type: web
+    name: alice-demo
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn wsgi:app --workers 1 --threads 4 --timeout 120 --bind 0.0.0.0:$PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_TOKEN
+        generateValue: true
+      - key: ALICE_SECRET_KEY
+        generateValue: true
+      - key: ALICE_DB_PATH
+        value: /tmp/alice.db
+      - key: ALICE_BACKUP_DIR
+        value: /tmp/backups
+      - key: ALICE_BEHIND_PROXY
+        value: "1"
